@@ -136,8 +136,10 @@ for rota in ROTAS:
         msg.append(RODAPE)
         enviado = tg_texto("\n\n".join(msg))
         if enviado:   # só marca como alertado se chegou a pelo menos um destinatário
-            registro_alertas += [dict(enviado_em=AGORA.isoformat(), rota=nome, data_ida=str(r.data_voo_ida),
-                                      data_volta=str(r.data_voo_volta), total=r.total) for r in novas]
+            registro_alertas += [dict(enviado_em=AGORA, rota=nome, data_ida=str(r.data_voo_ida),
+                                      data_volta=str(r.data_voo_volta), total=r.total,
+                                      preco_ida=r.preco_ida, preco_volta=r.preco_volta,
+                                      cia_ida=r.cia_ida, cia_volta=r.cia_volta) for r in novas]
     else:
         print(f"{nome}: nenhuma oferta nova abaixo do teto.")
 
@@ -193,4 +195,4 @@ for rota in ROTAS:
 
 if not DRY_RUN:   # em teste não marca como enviado, para o alerta real ainda sair
     hist.gravar_alertas(pd.DataFrame(registro_alertas, columns=COLS_ALERTAS))
-print(f"\n{len(registro_alertas)} oferta(s) alertada(s) nesta execução. [CONCLUÍDO]")
+print(f"\n{len(registro_alertas)} oferta(s) alertada(s) nesta execução.")

@@ -3,7 +3,6 @@ fast-flights
 pandas
 matplotlib
 requests
-gspread
-google-auth
+pyarrow
 nbconvert
 ipykernel

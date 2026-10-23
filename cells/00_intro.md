@@ -17,7 +17,7 @@
 1. Para cada rota, consulta o voo **só ida** mais barato de cada data, nos dois sentidos (Alagoas/Sergipe → São Paulo e São Paulo → Alagoas/Sergipe).
 2. Combina qualquer ida com qualquer volta que respeite a permanência mínima/máxima → acha a melhor **ida + volta** para cada data de saída (podendo ser cias e aeroportos diferentes).
 3. Alerta no Telegram quando `preço da ida + preço da volta ≤ teto` (padrão R$ 1.000, estadia de 5 a 7 dias).
-4. Grava o histórico (Google Sheets ou CSV) e gera um painel.
+4. Grava o histórico no próprio repositório (Parquet em `dados/`) e gera um painel.
 
 **Modos de execução**
 - `completo`: varre os 180 dias (≈ 360 consultas por rota). Roda 1×/dia.
@@ -30,6 +30,4 @@
 |---|---|---|
 | `TELEGRAM_TOKEN` | sim | token do bot (BotFather) |
 | `TELEGRAM_CHAT_IDS` | sim | ids separados por vírgula, ex.: `111111111,222222222` (os seus ficam só no segredo) |
-| `GOOGLE_SHEETS_CREDS` | não | JSON da service account (se quiser histórico no Sheets) |
-| `URL_PLANILHA` | não | link da planilha do histórico (junto com o segredo acima) |
 | `TRAVELPAYOUTS_TOKEN` | não | token gratuito do Travelpayouts (ativa a 2ª fonte) |

@@ -34,9 +34,7 @@ def segredo(nome, padrao=None):
 
 TELEGRAM_TOKEN = segredo("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_IDS = [c.strip() for c in (segredo("TELEGRAM_CHAT_IDS") or "").split(",") if c.strip()]
-GOOGLE_SHEETS_CREDS = segredo("GOOGLE_SHEETS_CREDS")
 TRAVELPAYOUTS_TOKEN = segredo("TRAVELPAYOUTS_TOKEN")
-URL_PLANILHA = segredo("URL_PLANILHA")
 
 DIAS_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
@@ -99,5 +97,5 @@ class Oferta:
 
 
 print(f"Agora: {AGORA:%d/%m/%Y %H:%M} ({FUSO})")
-print(f"Telegram: {len(TELEGRAM_CHAT_IDS)} destinatário(s) · Sheets: {'sim' if GOOGLE_SHEETS_CREDS else 'não'} · "
+print(f"Telegram: {len(TELEGRAM_CHAT_IDS)} destinatário(s) · "
       f"Travelpayouts: {'sim' if TRAVELPAYOUTS_TOKEN else 'não'}")

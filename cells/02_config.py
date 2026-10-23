@@ -47,11 +47,7 @@ ENVIAR_RESUMO_DIARIO = True       # resumo + painel após a varredura completa
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"   # 1 = imprime em vez de enviar
 
 # --- Histórico ---------------------------------------------------------------
-HIST_BACKEND = os.environ.get("HIST_BACKEND", "auto")  # auto | sheets | csv
-# URL da planilha: lida do segredo URL_PLANILHA (não fica escrita no código).
-ABA_PRECOS = "v4_precos"
-ABA_ALERTAS = "v4_alertas"
-PASTA_DADOS = os.environ.get("PASTA_DADOS", "dados")   # usado no modo csv
+PASTA_DADOS = os.environ.get("PASTA_DADOS", "dados")   # histórico em Parquet dentro do repositório
 FUSO = "America/Sao_Paulo"
 
 print(f"{len(ROTAS)} rota(s) · horizonte {HORIZONTE_DIAS} dias · modo={MODO} · fonte={FONTE} · dry_run={DRY_RUN}")

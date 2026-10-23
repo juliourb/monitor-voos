@@ -11,6 +11,5 @@ def _instalar(pacote_import, spec_pip):
 
 _instalar("fli", "flights @ git+https://github.com/punitarani/fli.git@881aee5ff4321e81ea2157cb44be94ce6a21dc1b")
 _instalar("fast_flights", "fast-flights")
-_instalar("gspread", "gspread")
-_instalar("google.oauth2", "google-auth")
+_instalar("pyarrow", "pyarrow")
 print("Dependências OK.")

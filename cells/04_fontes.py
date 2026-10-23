@@ -11,6 +11,15 @@ def _nome_cia(codigo, nome=None):
     return CIAS.get(codigo, nome or codigo)
 
 
+def _por_cia(opcoes):
+    """Mantém só a opção mais barata de cada companhia (dado extra gravado em dados/ofertas)."""
+    melhores = {}
+    for o in opcoes:
+        if o["cia"] not in melhores or o["preco"] < melhores[o["cia"]]["preco"]:
+            melhores[o["cia"]] = o
+    return sorted(melhores.values(), key=lambda o: o["preco"])
+
+
 # ---------------------------------------------------------------- fli
 def buscar_fli(origens, destinos, d):
     from fli.models import (Airport, FlightSearchFilters, FlightSegment,
@@ -31,24 +40,30 @@ def buscar_fli(origens, destinos, d):
     voos = [v for v in (voos or []) if v.price]
     if not voos:
         return None
+
+    def resumo(v):
+        l0, l1 = v.legs[0], v.legs[-1]
+        return dict(preco=float(v.price),
+                    cia=" + ".join(sorted({_nome_cia(l.airline.name, l.airline.value) for l in v.legs})),
+                    origem=l0.departure_airport.name, destino=l1.arrival_airport.name,
+                    escalas=int(v.stops), duracao_min=int(v.duration),
+                    partida=l0.departure_datetime.strftime("%H:%M"),
+                    chegada=l1.arrival_datetime.strftime("%H:%M"))
+
     v = min(voos, key=lambda x: x.price)
-    l0, l1 = v.legs[0], v.legs[-1]
-    cias = sorted({_nome_cia(l.airline.name, l.airline.value) for l in v.legs})
+    melhor = resumo(v)
     try:
-        link = busca.build_flight_booking_url(v, currency="BRL", language="pt-BR", country="BR")
+        melhor["link"] = busca.build_flight_booking_url(v, currency="BRL", language="pt-BR", country="BR")
     except Exception:
-        link = link_google(l0.departure_airport.name, l1.arrival_airport.name, d)
-    return dict(preco=float(v.price), cia=" + ".join(cias),
-                origem=l0.departure_airport.name, destino=l1.arrival_airport.name,
-                escalas=int(v.stops), duracao_min=int(v.duration),
-                partida=l0.departure_datetime.strftime("%H:%M"),
-                chegada=l1.arrival_datetime.strftime("%H:%M"), link=link)
+        melhor["link"] = link_google(melhor["origem"], melhor["destino"], d)
+    melhor["extras"] = _por_cia(resumo(x) for x in voos)
+    return melhor
 
 
 # ---------------------------------------------------------------- fast-flights
 def buscar_fast_flights(origens, destinos, d):
     from fast_flights import create_query, FlightQuery, Passengers, get_flights
-    melhor = None
+    melhor, opcoes = None, []
     for o in origens:
         for x in destinos:
             q = create_query(
@@ -60,16 +75,21 @@ def buscar_fast_flights(origens, destinos, d):
             except Exception:
                 continue
             for f in (res or []):
-                if f.price and (melhor is None or f.price < melhor["preco"]):
-                    s0, s1 = f.flights[0], f.flights[-1]
-                    melhor = dict(
-                        preco=float(f.price), cia=" + ".join(_nome_cia(c) for c in f.airlines),
-                        origem=s0.from_airport.code, destino=s1.to_airport.code,
-                        escalas=max(0, len(f.flights) - 1),
-                        duracao_min=sum(s.duration or 0 for s in f.flights),
-                        partida="%02d:%02d" % tuple(s0.departure.time),
-                        chegada="%02d:%02d" % tuple(s1.arrival.time), link=q.url())
+                if not f.price:
+                    continue
+                s0, s1 = f.flights[0], f.flights[-1]
+                op = dict(preco=float(f.price), cia=" + ".join(_nome_cia(c) for c in f.airlines),
+                          origem=s0.from_airport.code, destino=s1.to_airport.code,
+                          escalas=max(0, len(f.flights) - 1),
+                          duracao_min=sum(s.duration or 0 for s in f.flights),
+                          partida="%02d:%02d" % tuple(s0.departure.time),
+                          chegada="%02d:%02d" % tuple(s1.arrival.time))
+                opcoes.append(op)
+                if melhor is None or op["preco"] < melhor["preco"]:
+                    melhor = dict(op, link=q.url())
             time.sleep(PAUSA_SEG)
+    if melhor:
+        melhor["extras"] = _por_cia(opcoes)
     return melhor
 
 
@@ -88,9 +108,14 @@ def buscar_simulada(origens, destinos, d):
     o, x = rnd.choice(origens), rnd.choice(destinos)
     h = rnd.randint(5, 21)
     dur = rnd.choice([180, 195, 240, 330, 410])
-    return dict(preco=float(preco), cia=rnd.choice(["LATAM", "GOL", "Azul"]), origem=o, destino=x,
-                escalas=0 if dur < 200 else 1, duracao_min=dur, partida=f"{h:02d}:{rnd.choice([0, 15, 30, 45]):02d}",
-                chegada=f"{(h + dur // 60) % 24:02d}:{dur % 60:02d}", link=link_google(o, x, d))
+    cias = ["LATAM", "GOL", "Azul"]
+    rnd.shuffle(cias)
+    melhor = dict(preco=float(preco), cia=cias[0], origem=o, destino=x,
+                  escalas=0 if dur < 200 else 1, duracao_min=dur, partida=f"{h:02d}:{rnd.choice([0, 15, 30, 45]):02d}",
+                  chegada=f"{(h + dur // 60) % 24:02d}:{dur % 60:02d}")
+    extras = [dict(melhor)] + [dict(melhor, cia=c, preco=float(round(preco * rnd.uniform(1.03, 1.6))))
+                               for c in cias[1:]]
+    return dict(melhor, link=link_google(o, x, d), extras=extras)
 
 
 FONTES = {"fli": buscar_fli, "fast_flights": buscar_fast_flights, "simulada": buscar_simulada}
@@ -127,7 +152,7 @@ def _consultar(fonte, origens, destinos, d, tentativas=2):
 def varrer(rota, sentido, datas, fonte):
     """Consulta todas as datas em paralelo. Devolve (lista de Oferta, estatísticas)."""
     ori, dst = (rota["origens"], rota["destinos"]) if sentido == "ida" else (rota["destinos"], rota["origens"])
-    ofertas, stats = [], {"consultas": len(datas), "sem_voo": 0, "falhas": 0, "erros": []}
+    ofertas, stats = [], {"consultas": len(datas), "sem_voo": 0, "falhas": 0, "erros": [], "extras": []}
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         futuros = {ex.submit(_consultar, fonte, ori, dst, d): d for d in datas}
         for i, fut in enumerate(as_completed(futuros), 1):
@@ -139,6 +164,9 @@ def varrer(rota, sentido, datas, fonte):
             elif r is None:
                 stats["sem_voo"] += 1
             else:
+                for e in r.pop("extras", []):
+                    stats["extras"].append(dict(e, rota=rota["nome"], sentido=sentido,
+                                                data_voo=d.isoformat(), fonte=fonte))
                 ofertas.append(Oferta(rota=rota["nome"], sentido=sentido, data_voo=d.isoformat(),
                                       fonte=fonte, **r))
             if i % 40 == 0 or i == len(datas):

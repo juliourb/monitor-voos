@@ -38,7 +38,7 @@ for rota in ROTAS:
     for sentido in ("ida", "volta"):
         datas = datas_para(nome, sentido, modo, extra=rota["max_noites"])
         if not datas:
-            estatisticas[(nome, sentido)] = {"consultas": 0, "sem_voo": 0, "falhas": 0, "erros": [], "fonte": fonte}
+            estatisticas[(nome, sentido)] = {"consultas": 0, "sem_voo": 0, "falhas": 0, "erros": [], "extras": [], "fonte": fonte}
             continue
         print(f"{sentido}: {len(datas)} datas ({fmt_data(datas[0], False)} a {fmt_data(datas[-1], False)})")
         ofs, st = varrer(rota, sentido, datas, fonte)
@@ -58,7 +58,11 @@ df_atual["data_busca"] = AGORA
 df_atual["modo"] = df_atual["rota"].map(modos)
 df_atual["data_voo"] = pd.to_datetime(df_atual["data_voo"]).dt.date
 
-print(f"\n{len(df_atual)} preços coletados nesta execução.")
+# dado extra: a opção mais barata de cada companhia, em cada data consultada
+df_ofertas = pd.DataFrame([e for st in estatisticas.values() for e in st["extras"]])
+df_ofertas["data_busca"] = AGORA
+
+print(f"\n{len(df_atual)} preços coletados nesta execução · {len(df_ofertas)} opções por companhia.")
 for (r, s), st in estatisticas.items():
     print(f"  {r} / {s}: {st['consultas']} consultas · {st['sem_voo']} sem voo · {st['falhas']} falhas"
           + (f" · {st.get('aviasales', 0)} datas do Aviasales" if 'aviasales' in st else ""))

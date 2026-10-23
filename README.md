@@ -1,128 +1,204 @@
-# Monitor de voos v4 — Alagoas ⇄ São Paulo
+# ✈️ Monitor de voos baratos (Google Flights → Telegram)
 
-Varre todas as datas de amanhã até +180 dias e procura ida **MCZ/AJU → GRU/CGH/VCP** com volta 5 a 7 dias depois. Avisa no Telegram quando **ida + volta ≤ R$ 1.000**.
+Robô que roda sozinho no GitHub Actions e guarda o histórico de preços no próprio repositório. Ele faz quatro coisas:
+- Varre todas as datas dos próximos 180 dias.
+- Combina a ida e a volta mais baratas dentro da estadia que você escolher.
+- Manda um alerta no Telegram quando a soma fica abaixo do seu teto.
+- Uma vez por dia, manda também um resumo com gráficos.
 
-| Arquivo | Para quê |
-|---|---|
-| `monitor_voos_v4.ipynb` | o monitor. Só a célula 2 (parâmetros) precisa ser editada |
-| `.github/workflows/monitor.yml` | agenda no GitHub Actions: 6 execuções por dia |
-| `requirements.txt` | dependências |
-| `dados/` | histórico de preços em CSV (criado pelo próprio robô) |
-| `cells/` + `montar_notebook.py` | fonte do notebook, célula por célula (opcional) |
+Configuração padrão: ida **MCZ/AJU → GRU/CGH/VCP**, volta 5 a 7 dias depois, teto de **R$ 1.000** somando os dois trechos. Tudo isso se muda na célula 2 do notebook ([passo 6](#6-personalizar-a-rota)).
+
+**Nada de token ou id fica no código.** Tudo entra como *Secret* do GitHub, então o repositório pode ser público.
 
 ---
 
-## Tutorial: repositório público sem expor token e ids
+## Sumário
+1. [Copiar o projeto para a sua conta](#1-copiar-o-projeto-para-a-sua-conta)
+2. [Criar o bot do Telegram e pegar o token](#2-criar-o-bot-do-telegram-e-pegar-o-token)
+3. [Descobrir os chat ids](#3-descobrir-os-chat-ids)
+4. [(Opcional) Segunda fonte de preços: Travelpayouts](#4-opcional-segunda-fonte-de-preços-travelpayouts)
+5. [Cadastrar os Secrets no GitHub](#5-cadastrar-os-secrets-no-github)
+6. [Personalizar a rota](#6-personalizar-a-rota)
+7. [Testar e ligar](#7-testar-e-ligar)
+8. [Onde ficam os dados](#8-onde-ficam-os-dados)
+9. [Problemas comuns](#9-problemas-comuns)
+10. [Segurança](#10-segurança)
 
-**Como funciona a proteção.** O código nunca contém segredos. O notebook lê `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_IDS` e `URL_PLANILHA` de variáveis de ambiente. No GitHub, essas variáveis vêm de **Secrets**, que são criptografados: ninguém consegue lê-los, nem você, depois de salvos. Além disso:
-- o GitHub troca qualquer segredo por `***` nos logs;
-- o workflow mascara cada chat id separadamente;
-- o workflow apaga os segredos do notebook executado antes de anexá-lo;
-- o notebook, se der erro no Telegram, mostra só "destinatário 1/2", nunca o id nem o token.
+---
 
-### Passo 0 — Troque o token do bot (obrigatório)
+## 1. Copiar o projeto para a sua conta
 
-O token antigo estava escrito no notebook v3. Considere-o vazado.
+**Opção A — Fork (mais fácil):**
+1. No topo deste repositório, clique em **Fork → Create fork**.
+2. No seu fork, abra a aba **Actions** e clique em **I understand my workflows, go ahead and enable them**. Em forks, o GitHub desliga os workflows até você autorizar.
 
-1. No Telegram, abra **@BotFather**.
-2. Envie `/mybots`, escolha o bot e toque em **API Token → Revoke current token**.
-3. Guarde o token novo. Ele vai **só** para o segredo do GitHub (e para os Secrets do Kaggle, se ainda usar o v3).
+**Opção B — Repositório novo, enviando os arquivos:**
+1. **New repository** → escolha um nome → *Public* → **Create**.
+2. **Add file → Upload files** → arraste todos os arquivos do projeto.
+3. **Confira se a pasta `.github` subiu.** A raiz do repositório precisa mostrar `.github/workflows/monitor.yml`. Por começar com ponto, essa pasta fica oculta no Windows e no Mac, e o upload pelo navegador costuma pulá-la. Se ela não estiver lá:
+   1. Clique em **Add file → Create new file**.
+   2. No nome, digite exatamente `.github/workflows/monitor.yml`. As barras criam as pastas.
+   3. Cole o conteúdo do arquivo `monitor.yml` → **Commit changes**.
 
-> **Não suba o `voos-al2florianolis.ipynb` (v3) para o repositório.** Ele tem o token, os ids e o link da planilha escritos no código. Suba apenas os arquivos deste pacote.
+Em qualquer opção, libere o robô para gravar o histórico: **Settings → Actions → General → Workflow permissions → Read and write permissions → Save**.
 
-### Passo 1 — Criar o repositório
+## 2. Criar o bot do Telegram e pegar o token
 
-1. Em github.com, clique em **New repository**.
-2. Nome: `monitor-voos` · **Public** · marque *Add a README* · **Create repository**.
+Documentação oficial: [Telegram — From BotFather to 'Hello World'](https://core.telegram.org/bots/tutorial), seção *Obtain your bot token*.
 
-### Passo 2 — Enviar os arquivos (pelo navegador, sem git)
+1. No Telegram, abra o **@BotFather** (o perfil oficial tem selo azul).
+2. Envie `/newbot`.
+3. Dê um nome (ex.: `Alerta de Voos`) e um usuário terminado em `bot` (ex.: `meus_voos_alerta_bot`).
+4. O BotFather responde com o **token**, no formato `123456789:AA...`. Guarde-o: ele vai para o Secret `TELEGRAM_TOKEN`.
+5. Abra o seu bot e toque em **Iniciar**. Um bot só consegue mandar mensagem para quem falou com ele antes.
 
-1. Descompacte o `monitor-voos-v4.zip` no seu computador.
-2. No repositório, clique em **Add file → Upload files**.
-3. Arraste **o conteúdo** da pasta `monitor-voos`: `monitor_voos_v4.ipynb`, `requirements.txt`, `README.md`, `montar_notebook.py`, `.gitignore` e as pastas `cells` e `.github`.
-   - A pasta `.github` começa com ponto e pode estar oculta. No Windows: Explorador → *Exibir → Itens ocultos*. No Mac: `Cmd + Shift + .` no Finder.
-   - Se o upload ignorar a pasta `.github`, crie o arquivo à mão: **Add file → Create new file**, digite o nome `.github/workflows/monitor.yml` (as barras criam as pastas) e cole o conteúdo do `monitor.yml`.
-4. **Commit changes**.
+> Token vazou? Envie `/mybots` ao BotFather → escolha o bot → **API Token → Revoke current token**, e atualize o Secret.
 
-<details><summary>Alternativa pelo terminal (git)</summary>
+## 3. Descobrir os chat ids
 
-```bash
-git clone https://github.com/<seu-usuario>/monitor-voos.git
-cd monitor-voos
-# copie para cá os arquivos do pacote
-git add .
-git status          # confira: não pode aparecer o notebook v3 nem nenhum .json de credencial
-git commit -m "monitor de voos v4"
-git push
+Cada pessoa que vai receber alertas precisa:
+1. Mandar qualquer mensagem para o **seu** bot.
+2. Descobrir o próprio id por um destes caminhos:
+   - **Mais simples:** mandar uma mensagem para o **@userinfobot**. Ele responde com o `Id`.
+   - **Pelo próprio bot:** abrir no navegador `https://api.telegram.org/bot<SEU_TOKEN>/getUpdates` e procurar `"chat":{"id": ...}`. Esse é o método [`getUpdates` da Bot API](https://core.telegram.org/bots/api#getupdates). Faça isso só no seu computador, porque a URL contém o token.
+
+Junte os ids **separados por vírgula, sem espaço**:
+
 ```
-</details>
+123456789,987654321
+```
 
-### Passo 3 — Cadastrar os segredos
+Grupos têm id negativo e entram do mesmo jeito, por exemplo `-1001234567890`. Nesse caso, adicione o bot ao grupo antes.
 
-**Settings → Secrets and variables → Actions → New repository secret.** Crie um por vez (o nome tem que ser exatamente este):
+## 4. (Opcional) Segunda fonte de preços: Travelpayouts
 
-| Name | Secret | Obrigatório |
+Crie uma conta grátis em [travelpayouts.com](https://www.travelpayouts.com) → perfil → seção **API token**. Cadastre como `TRAVELPAYOUTS_TOKEN`. Os preços dessa fonte vêm do cache do Aviasales (até ~48 h) e aparecem marcados como "confirme".
+
+## 5. Cadastrar os Secrets no GitHub
+
+No seu repositório: **Settings → Secrets and variables → Actions → aba Secrets → New repository secret**. O *Name* tem que ser exatamente este:
+
+| Name | Obrigatório | Valor |
 |---|---|---|
-| `TELEGRAM_TOKEN` | o token **novo** do BotFather | sim |
-| `TELEGRAM_CHAT_IDS` | seus ids separados por vírgula, sem espaço | sim |
-| `GOOGLE_SHEETS_CREDS` | o JSON inteiro da service account (cole tudo, com as chaves `{ }`) | não |
-| `URL_PLANILHA` | o link da planilha do histórico | não (só junto com o anterior) |
-| `TRAVELPAYOUTS_TOKEN` | token do Travelpayouts | não |
+| `TELEGRAM_TOKEN` | **sim** | token do BotFather ([passo 2](#2-criar-o-bot-do-telegram-e-pegar-o-token)) |
+| `TELEGRAM_CHAT_IDS` | **sim** | ids separados por vírgula ([passo 3](#3-descobrir-os-chat-ids)) |
+| `TRAVELPAYOUTS_TOKEN` | não | token do Travelpayouts ([passo 4](#4-opcional-segunda-fonte-de-preços-travelpayouts)) |
 
-Sem `GOOGLE_SHEETS_CREDS` + `URL_PLANILHA`, o histórico vai para `dados/*.csv.gz` no próprio repositório. Esses arquivos só têm datas, cias e preços. Se preferir que nem isso fique público, cadastre os dois segredos do Sheets.
+Depois de salvo, ninguém consegue ler um Secret, nem você. Para trocar o valor, clique no lápis e cole o novo.
 
-### Passo 4 — Liberar o robô para gravar o histórico
+## 6. Personalizar a rota
 
-**Settings → Actions → General → Workflow permissions → Read and write permissions → Save.**
+Edite a **célula 2** do `monitor_voos_v4.ipynb`. No GitHub, abra o arquivo → ícone de lápis. O notebook é JSON, então é mais confortável editar no Jupyter ou no VS Code e reenviar.
 
-### Passo 5 — Primeiro teste, sem enviar nada
+```python
+ROTAS = [
+    dict(
+        nome="Alagoas ⇄ São Paulo",
+        origens=["MCZ", "AJU"],            # de onde sai a ida
+        destinos=["GRU", "CGH", "VCP"],    # para onde vai a ida
+        teto_ida_volta=1000,               # alerta se ida + volta <= isto
+        min_noites=5, max_noites=7,        # estadia
+        teto_trecho=None,                  # ou ex.: 450 para alertar trechos avulsos
+    ),
+]
+```
 
-1. Aba **Actions**. Se aparecer um aviso, clique em *I understand my workflows, go ahead and enable them*.
-2. Clique em **Monitor de voos → Run workflow**, escolha `dry_run = 1` e clique em **Run workflow**.
-3. Abra a execução. No passo *Rodar o notebook*, ela deve terminar em verde em ~10 min.
-4. No fim da página, em *Artifacts*, baixe `execucao-N`. O `executado.ipynb` mostra as mensagens que seriam enviadas e o `painel_0.png`.
-5. Confira que no log e no notebook baixado não aparece nenhum id nem token, só `***`.
+Outras opções da mesma célula:
+- `HORIZONTE_DIAS`: até quantos dias à frente procurar.
+- `MAX_ESCALAS`: 0 = só voos diretos.
+- `PERMITIR_AEROPORTOS_DIFERENTES`: `False` obriga a voltar pelo mesmo aeroporto da ida.
 
-### Passo 6 — Ligar de verdade
+Se você mantém a fonte em `cells/`, rode `python montar_notebook.py` para gerar o notebook de novo.
 
-Rode **Run workflow** de novo com `dry_run = 0`. As mensagens chegam no Telegram. Daí em diante ele roda sozinho às 06h17, 09h17, 12h17, 15h17, 18h17 e 21h17 (Brasília). A das 06h17 faz a varredura completa; as outras fazem checagens rápidas.
+## 7. Testar e ligar
 
-### Cuidados que mantêm os segredos seguros
+1. **Actions → Monitor de voos → Run workflow** → `dry_run = 1` → **Run workflow**.
+2. Espere uns 10 min e abra a execução. Em **Artifacts**, baixe `execucao-N`. Lá estão as mensagens que seriam enviadas (`executado.ipynb`) e o painel (`painel_0.png`). No lugar dos segredos deve aparecer só `***`.
+3. Rode de novo com `dry_run = 0`. Agora as mensagens chegam no Telegram.
+4. Daí em diante ele roda sozinho às 06h17, 09h17, 12h17, 15h17, 18h17 e 21h17 (Brasília). A das 06h17 faz a varredura completa (~360 consultas); as outras fazem checagens rápidas.
 
-- **Nunca** escreva token, ids ou links da planilha em células do notebook, nem "só para testar".
-- Se um segredo for parar num commit, apagar o arquivo não basta: o histórico do git guarda. Revogue e troque o segredo.
-- Na aba **Security**, mantenha ligado o *Secret scanning / Push protection*. Ele bloqueia push com tokens conhecidos.
-- Pull requests de forks não recebem segredos. Não troque o gatilho para `pull_request_target`.
+Para mudar os horários, edite o `cron` em `.github/workflows/monitor.yml`. Ele está em UTC, que é o horário de Brasília + 3 h.
 
-### Se os horários agendados falharem
+## 8. Onde ficam os dados
 
-O GitHub pode atrasar ou pular execuções agendadas em horários de pico. Plano B gratuito: no cron-job.org, crie uma tarefa que chama
+Cada execução grava arquivos **novos e pequenos** em `dados/` (nunca reescreve os antigos). Assim o git guarda só o que mudou e o repositório cresce devagar: ~15 MB por mês, quase tudo do painel diário. O limite recomendado pelo GitHub é 1 GB.
+
+> O robô faz commits em `dados/` a cada execução. Se você editar o projeto no seu computador, rode `git pull` antes de fazer `push`.
 
 ```
-POST https://api.github.com/repos/<usuario>/monitor-voos/actions/workflows/monitor.yml/dispatches
+dados/
+├── precos/AAAA/MM/<execução>.parquet    menor preço por rota, sentido e data do voo
+├── ofertas/AAAA/MM/<execução>.parquet   menor preço de CADA companhia por data
+├── alertas/AAAA/MM/<execução>.parquet   o que foi enviado no Telegram (evita repetir)
+├── execucoes.csv                         1 linha por execução: modo, falhas, melhor preço, duração
+└── ultimo/                               painel e tabela da última varredura completa
+    ├── painel_0.png
+    └── melhor_ida_volta_por_data_0.csv
+```
+
+- **Ver rápido, no navegador:** abra `dados/ultimo/painel_0.png` ou `dados/execucoes.csv`. O GitHub mostra CSV como tabela.
+- **Analisar:** clone o repositório (ou faça `git pull`) e consulte direto com pandas ou DuckDB:
+
+```python
+import duckdb
+duckdb.sql("""
+    select data_voo, min(preco) as menor, count(distinct data_busca) as buscas
+    from 'dados/precos/**/*.parquet'
+    where sentido = 'ida'
+    group by 1 order by 1
+""").df()
+```
+
+- **Por companhia:** `dados/ofertas` permite comparar LATAM × GOL × Azul por data, ver qual cia lidera em cada mês, etc.
+
+Os arquivos são públicos num repositório público, mas só contêm datas, aeroportos, companhias e preços.
+
+## 9. Problemas comuns
+
+**O workflow não aparece na aba Actions.**
+- Confira se existe o arquivo `.github/workflows/monitor.yml` na raiz do repositório. O nome da pasta é `.github`, com ponto, e `workflows` vai no plural. Esta é a causa mais comum quando o envio foi pelo navegador; veja o [passo 1](#1-copiar-o-projeto-para-a-sua-conta).
+- O arquivo precisa estar na branch padrão (`main`).
+- Em fork, abra a aba Actions e clique para habilitar os workflows.
+- Em **Settings → Actions → General**, verifique se *Allow all actions* está marcado.
+- Se o workflow aparece mas o botão **Run workflow** não, o YAML pode ter erro de indentação. Cole o arquivo de novo.
+
+**`[ERRO TELEGRAM destinatário 1] HTTP 400 chat not found`:** essa pessoa não iniciou conversa com o bot, ou o id está errado.
+
+**`HTTP 401 Unauthorized`:** o token está errado ou foi revogado. Atualize o Secret `TELEGRAM_TOKEN`.
+
+**O passo "Guardar histórico" falhou com `Permission denied` / `403`:** falta liberar a escrita em **Settings → Actions → General → Workflow permissions → Read and write permissions**.
+
+**"Monitor com problema: X de Y consultas falharam":** o Google pode estar limitando as consultas. Reduza `WORKERS` ou aumente `PAUSA_SEG` na célula 2.
+
+**Os horários agendados não rodam:** o GitHub pode atrasar ou pular execuções em horários de pico. Plano B: uma tarefa grátis no cron-job.org que chama
+
+```
+POST https://api.github.com/repos/<usuario>/<repo>/actions/workflows/monitor.yml/dispatches
 Authorization: Bearer <token fine-grained só deste repositório, permissão "Actions: Read and write">
-Content-Type: application/json
 Body: {"ref":"main"}
 ```
 
-O token fine-grained fica guardado no cron-job.org, não no repositório.
+## 10. Segurança
+
+- Nunca escreva token ou ids em células do notebook, nem "só para testar".
+- Se algo secreto entrou num commit, apagar o arquivo não basta: o histórico do git guarda. **Revogue e troque** a credencial.
+- O workflow mascara os ids nos logs e apaga os segredos do notebook executado antes de anexá-lo. Em caso de erro, o notebook mostra só "destinatário 1/2".
+- Mantenha ligado **Settings → Code security → Secret scanning / Push protection**.
+- Pull requests vindos de forks não recebem os Secrets. Não troque o gatilho para `pull_request_target`.
 
 ---
 
-## Kaggle (alternativa, 1×/dia)
-
-O agendamento do Kaggle só oferece diário, semanal ou mensal. Cadastre os mesmos nomes em *Add-ons → Secrets*, ligue *Internet* e agende *Daily*.
-
-## Testar no computador, sem internet
+### Teste local, sem internet
 
 ```
-FONTE=simulada DRY_RUN=1 HIST_BACKEND=csv jupyter nbconvert --to notebook --execute monitor_voos_v4.ipynb --output teste.ipynb
+pip install -r requirements.txt
+FONTE=simulada DRY_RUN=1 PASTA_DADOS=/tmp/dados_teste jupyter nbconvert --to notebook --execute monitor_voos_v4.ipynb --output teste.ipynb
 ```
 
-## Fontes de preço
+### Fontes de preço
 
 | Fonte | Como acessa | Observação |
 |---|---|---|
 | **fli** (principal) | Google Flights, todos os aeroportos numa consulta | traz o link do voo exato |
 | **fast-flights** (reserva) | Google Flights | usada se a fli falhar |
-| **Aviasales / Travelpayouts** (opcional) | API grátis, 1 chamada = mês inteiro | preços em cache (~48 h), marcados como "confirme" |
+| **Travelpayouts / Aviasales** (opcional) | API grátis, 1 chamada = mês inteiro | preços em cache, marcados "confirme" |
