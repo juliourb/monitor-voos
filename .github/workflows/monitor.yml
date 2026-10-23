@@ -16,7 +16,7 @@ on:
         default: "0"
 
 permissions:
-  contents: write          # para gravar o histórico CSV de volta no repositório
+  contents: write          # para gravar o histórico (dados/) de volta no repositório
 
 concurrency:
   group: monitor-voos      # nunca roda duas execuções ao mesmo tempo
@@ -24,17 +24,17 @@ concurrency:
 
 jobs:
   monitorar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # fixo: evita a migração automática do ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Mascarar ids do Telegram nos logs
         env:
           IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
         run: for id in ${IDS//,/ }; do echo "::add-mask::$id"; done
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -46,24 +46,21 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-          GOOGLE_SHEETS_CREDS: ${{ secrets.GOOGLE_SHEETS_CREDS }}
           TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
-          URL_PLANILHA: ${{ secrets.URL_PLANILHA }}
           MODO: ${{ github.event.inputs.modo || 'auto' }}
           DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
-          HIST_BACKEND: ${{ vars.HIST_BACKEND || 'auto' }}
         run: |
           jupyter nbconvert --to notebook --execute monitor_voos_v4.ipynb \
             --output executado.ipynb --ExecutePreprocessor.timeout=2100
 
-      - name: Guardar histórico CSV no repositório
+      - name: Guardar histórico (dados/) no repositório
         if: always()
         run: |
           if [ -n "$(git status --porcelain dados/)" ]; then
             git config user.name  "monitor-voos[bot]"
             git config user.email "monitor-voos@users.noreply.github.com"
             git add dados/
-            git commit -m "histórico de preços $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git commit -m "dados: execução $(date -u +'%Y-%m-%d %H:%M') UTC [skip ci]"
             git pull --rebase --autostash && git push
           fi
 
@@ -72,14 +69,13 @@ jobs:
         env:
           S1: ${{ secrets.TELEGRAM_TOKEN }}
           S2: ${{ secrets.TELEGRAM_CHAT_IDS }}
-          S3: ${{ secrets.URL_PLANILHA }}
           S4: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
         run: |
           [ -f executado.ipynb ] || exit 0
           python - <<'EOF'
           import os
           txt = open("executado.ipynb", encoding="utf-8").read()
-          segredos = [os.environ.get(k, "") for k in ("S1", "S3", "S4")] + os.environ.get("S2", "").split(",")
+          segredos = [os.environ.get(k, "") for k in ("S1", "S4")] + os.environ.get("S2", "").split(",")
           for s in segredos:
               if s.strip():
                   txt = txt.replace(s.strip(), "***")
@@ -88,7 +84,7 @@ jobs:
 
       - name: Anexar notebook executado e painel
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: execucao-${{ github.run_number }}
           path: |
