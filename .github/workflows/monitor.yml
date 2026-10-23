@@ -1,0 +1,97 @@
+name: Monitor de voos
+
+on:
+  schedule:
+    # Horários em UTC (Brasília = UTC-3). Minuto 17 para fugir da fila do minuto 0.
+    # 09:17 UTC = 06:17 BRT → como a última completa terá >20 h, o modo "auto" faz a varredura completa.
+    # Demais horários → checagem rápida (só as datas mais baratas + próximos 14 dias).
+    - cron: "17 9,12,15,18,21,0 * * *"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "auto | completo | rapido"
+        default: "auto"
+      dry_run:
+        description: "1 = só imprime as mensagens, não envia"
+        default: "0"
+
+permissions:
+  contents: write          # para gravar o histórico CSV de volta no repositório
+
+concurrency:
+  group: monitor-voos      # nunca roda duas execuções ao mesmo tempo
+  cancel-in-progress: false
+
+jobs:
+  monitorar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mascarar ids do Telegram nos logs
+        env:
+          IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: for id in ${IDS//,/ }; do echo "::add-mask::$id"; done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Rodar o notebook
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          GOOGLE_SHEETS_CREDS: ${{ secrets.GOOGLE_SHEETS_CREDS }}
+          TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
+          URL_PLANILHA: ${{ secrets.URL_PLANILHA }}
+          MODO: ${{ github.event.inputs.modo || 'auto' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+          HIST_BACKEND: ${{ vars.HIST_BACKEND || 'auto' }}
+        run: |
+          jupyter nbconvert --to notebook --execute monitor_voos_v4.ipynb \
+            --output executado.ipynb --ExecutePreprocessor.timeout=2100
+
+      - name: Guardar histórico CSV no repositório
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain dados/)" ]; then
+            git config user.name  "monitor-voos[bot]"
+            git config user.email "monitor-voos@users.noreply.github.com"
+            git add dados/
+            git commit -m "histórico de preços $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git pull --rebase --autostash && git push
+          fi
+
+      - name: Apagar segredos do notebook executado (o anexo é público)
+        if: always()
+        env:
+          S1: ${{ secrets.TELEGRAM_TOKEN }}
+          S2: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          S3: ${{ secrets.URL_PLANILHA }}
+          S4: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
+        run: |
+          [ -f executado.ipynb ] || exit 0
+          python - <<'EOF'
+          import os
+          txt = open("executado.ipynb", encoding="utf-8").read()
+          segredos = [os.environ.get(k, "") for k in ("S1", "S3", "S4")] + os.environ.get("S2", "").split(",")
+          for s in segredos:
+              if s.strip():
+                  txt = txt.replace(s.strip(), "***")
+          open("executado.ipynb", "w", encoding="utf-8").write(txt)
+          EOF
+
+      - name: Anexar notebook executado e painel
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: execucao-${{ github.run_number }}
+          path: |
+            executado.ipynb
+            painel_*.png
+          retention-days: 7
