@@ -42,3 +42,4 @@ data_busca,rota,modo,fonte,consultas,sem_voo,falhas,melhor_ida_volta,datas_no_te
 2026-11-04T20:40:25-03:00,Alagoas ⇄ São Paulo,rapido,fli,78,0,0,817.0,78,1,False,27
 2026-11-05T03:43:28-03:00,Alagoas ⇄ São Paulo,rapido,fli,78,0,0,799.0,78,2,False,28
 2026-11-05T14:23:30-03:00,Alagoas ⇄ São Paulo,completo,fli,367,0,0,788.0,86,9,False,101
+2026-11-05T20:38:20-03:00,Alagoas ⇄ São Paulo,rapido,fli,78,0,0,788.0,87,2,False,33
